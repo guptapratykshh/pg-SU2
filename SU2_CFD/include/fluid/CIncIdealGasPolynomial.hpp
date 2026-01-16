@@ -75,17 +75,24 @@ class CIncIdealGasPolynomial final : public CFluidModel {
     Temperature = t;
     Density = Pressure / (Temperature * Gas_Constant);
 
-    /* Evaluate the new Cp and enthalpy from the coefficients and temperature. */
-    Cp = coeffs_[0];
-    Enthalpy = coeffs_[0] * (t - Std_Ref_Temp_ND);
-    su2double t_i = 1.0;
-    su2double tref_i = 1.0;
-    for (int i = 1; i < N; ++i) {
-      t_i *= t;
-      tref_i *= Std_Ref_Temp_ND;
-      Cp += coeffs_[i] * t_i;
-      Enthalpy += coeffs_[i] * (t_i * t - tref_i * Std_Ref_Temp_ND) / (i + 1);
-    }
+    /* Evaluate the new Cp and enthalpy from the NASA coefficients and temperature.
+     * NASA Polynomials: Cp/R = a1 + a2*T + a3*T^2 + a4*T^3 + a5*T^4
+     *                   H/RT = a1 + a2*T/2 + a3*T^2/3 + a4*T^3/4 + a5*T^4/5 + a6/T
+     * Note: coeffs_[0] corresponds to a1, ..., coeffs_[5] to a6. */
+    
+    su2double t2 = t * t;
+    su2double t3 = t2 * t;
+    su2double t4 = t3 * t;
+
+    su2double Cp_R = coeffs_[0] + coeffs_[1] * t + coeffs_[2] * t2 + coeffs_[3] * t3 + coeffs_[4] * t4;
+    Cp = Cp_R * Gas_Constant;
+
+    su2double H_RT = coeffs_[0] + coeffs_[1] * t / 2.0 + coeffs_[2] * t2 / 3.0 + coeffs_[3] * t3 / 4.0 + coeffs_[4] * t4 / 5.0 + coeffs_[5] / t;
+    Enthalpy = H_RT * Gas_Constant * t;
+
+    su2double S_R = coeffs_[0] * log(t) + coeffs_[1] * t + coeffs_[2] * t2 / 2.0 + coeffs_[3] * t3 / 3.0 + coeffs_[4] * t4 / 4.0 + coeffs_[6];
+    Entropy = S_R * Gas_Constant;
+
     Cv = Cp / Gamma;
   }
 
@@ -108,16 +115,16 @@ class CIncIdealGasPolynomial final : public CFluidModel {
     /*--- Compute temperature given enthalpy using Newton-Raphson. ---*/
     while ((abs(delta_temp_iter) > toll) && (counter++ < counter_limit)) {
       /* Evaluate the new Cp and enthalpy from the coefficients and temperature. */
-      Cp_iter = coeffs_[0];
-      su2double Enthalpy_iter = coeffs_[0] * (temp_iter - Std_Ref_Temp_ND);
-      su2double t_i = 1.0;
-      su2double tref_i = 1.0;
-      for (int i = 1; i < N; ++i) {
-        t_i *= temp_iter;
-        tref_i *= Std_Ref_Temp_ND;
-        Cp_iter += coeffs_[i] * t_i;
-        Enthalpy_iter += coeffs_[i] * (t_i * temp_iter - tref_i * Std_Ref_Temp_ND) / (i + 1);
-      }
+      su2double t = temp_iter;
+      su2double t2 = t * t;
+      su2double t3 = t2 * t;
+      su2double t4 = t3 * t;
+
+      su2double Cp_R_iter = coeffs_[0] + coeffs_[1] * t + coeffs_[2] * t2 + coeffs_[3] * t3 + coeffs_[4] * t4;
+      Cp_iter = Cp_R_iter * Gas_Constant;
+
+      su2double H_RT_iter = coeffs_[0] + coeffs_[1] * t / 2.0 + coeffs_[2] * t2 / 3.0 + coeffs_[3] * t3 / 4.0 + coeffs_[4] * t4 / 5.0 + coeffs_[5] / t;
+      su2double Enthalpy_iter = H_RT_iter * Gas_Constant * t;
 
       delta_enthalpy_iter = Enthalpy - Enthalpy_iter;
 
@@ -136,6 +143,15 @@ class CIncIdealGasPolynomial final : public CFluidModel {
     if (counter == counter_limit) {
       cout << "Warning: Newton-Raphson exceeds max. iterations in temperature computation." << endl;
     }
+    
+    /* Calculate Entropy (NASA) */
+    su2double t = Temperature;
+    su2double t2 = t * t;
+    su2double t3 = t2 * t;
+    su2double t4 = t3 * t;
+    su2double S_R = coeffs_[0] * log(t) + coeffs_[1] * t + coeffs_[2] * t2 / 2.0 + coeffs_[3] * t3 / 3.0 + coeffs_[4] * t4 / 4.0 + coeffs_[6];
+    Entropy = S_R * Gas_Constant;
+
     Density = Pressure / (Temperature * Gas_Constant);
     Cv = Cp / Gamma;
   }
